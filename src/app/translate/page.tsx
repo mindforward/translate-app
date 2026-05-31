@@ -70,7 +70,7 @@ function TranslateInner() {
     const recognition = new SpeechRecognition()
     recognition.continuous = false
     recognition.interimResults = false
-    recognition.lang = dir === 'vi-zh' ? 'vi-VN' : 'zh-TW'
+    recognition.lang = dir === 'vi-zh' ? 'vi-VN' : 'zh-HK'
 
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript
