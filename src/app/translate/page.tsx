@@ -93,15 +93,45 @@ function TranslateInner() {
     setListening(false)
   }
 
-  // TTS
-  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
+  // TTS — improved voice selection
+  const voiceCache = useRef<Record<string, SpeechSynthesisVoice | null>>({})
 
   useEffect(() => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
-    // Load voices (they may load async)
-    const load = () => setVoices(window.speechSynthesis.getVoices())
-    load()
-    window.speechSynthesis.onvoiceschanged = load
+    const loadVoices = () => {
+      const allVoices = window.speechSynthesis.getVoices()
+      if (allVoices.length === 0) return
+
+      const langMap: Record<string, string> = {
+        'zh-HK': 'zh-HK',
+        'vi-VN': 'vi-VN',
+      }
+
+      for (const [code, bcp47] of Object.entries(langMap)) {
+        const langPrefix = bcp47.split('-')[0]
+
+        const priority = (v: SpeechSynthesisVoice) => {
+          const name = v.name.toLowerCase()
+          let score = 0
+          if (name.includes('google')) score += 100
+          else if (name.includes('microsoft')) score += 80
+          if (name.includes('natural')) score += 50
+          if (name.includes('premium')) score += 40
+          if (name.includes('enhanced')) score += 30
+          if (name.includes('samantha') || name.includes('karen') || name.includes('daniel')) score += 20
+          return score
+        }
+
+        const candidates = allVoices
+          .filter((v) => v.lang.startsWith(langPrefix) || v.lang.startsWith(code))
+          .sort((a, b) => priority(b) - priority(a))
+
+        voiceCache.current[code] = candidates[0] || null
+      }
+    }
+
+    loadVoices()
+    window.speechSynthesis.onvoiceschanged = loadVoices
     return () => { window.speechSynthesis.onvoiceschanged = null }
   }, [])
 
@@ -109,17 +139,15 @@ function TranslateInner() {
     if (!('speechSynthesis' in window)) return
     window.speechSynthesis.cancel()
 
-    // Pick voice: Cantonese (zh-HK) for Chinese, Vietnamese (vi-VN) for Vietnamese
     const lang = dir === 'vi-zh' ? 'zh-HK' : 'vi-VN'
     const utterance = new SpeechSynthesisUtterance(text)
 
-    // Try to find a matching voice
-    const match = voices.find(v => v.lang.startsWith(lang))
-    if (match) {
-      utterance.voice = match
+    const bestVoice = voiceCache.current[lang]
+    if (bestVoice) {
+      utterance.voice = bestVoice
     }
     utterance.lang = lang
-    utterance.rate = 0.85
+    utterance.rate = 0.9
     window.speechSynthesis.speak(utterance)
   }
 
