@@ -272,7 +272,7 @@ function TranslateInner() {
 
 export default function TranslatePage() {
   return (
-    <Suspense fallback={<div className="min-h-dvh flex items-center justify-center text-gray-400">...</div>}>
+    <Suspense fallback={<div className="min-h-dvh flex items-center justify-center text-gray-400">{LANG_MAP['vi-zh'].ui.loading}</div>}>
       <TranslateInner />
     </Suspense>
   )
