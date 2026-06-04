@@ -3,9 +3,68 @@
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 
-const LANG_MAP: Record<string, { source: string; target: string; sourceLabel: string; targetLabel: string; sourceFlag: string }> = {
-  'vi-zh': { source: 'Vietnamese', target: 'Traditional Chinese', sourceLabel: '越南文', targetLabel: '繁體中文', sourceFlag: '🇻🇳' },
-  'zh-vi': { source: 'Traditional Chinese', target: 'Vietnamese', sourceLabel: '繁體中文', targetLabel: '越南文', sourceFlag: '🇹🇼' },
+type UIStrings = {
+  inputPlaceholder: string
+  translate: string
+  translating: string
+  voiceInput: string
+  recording: string
+  copy: string
+  reverse: string
+  speakTitle: string
+  errorNoVoice: string
+  errorVoiceFailed: string
+  errorTranslateFailed: string
+  settingsSave: string
+  settingsUsingEnv: string
+  loading: string
+}
+
+const LANG_MAP: Record<string, {
+  source: string; target: string
+  sourceLabel: string; targetLabel: string; sourceFlag: string
+  ui: UIStrings
+}> = {
+  'vi-zh': {
+    source: 'Vietnamese', target: 'Traditional Chinese',
+    sourceLabel: '越南文', targetLabel: '繁體中文', sourceFlag: '🇻🇳',
+    ui: {
+      inputPlaceholder: 'Nhập văn bản tiếng Việt...',
+      translate: 'Dịch',
+      translating: 'Đang dịch...',
+      voiceInput: 'Nhập bằng giọng nói',
+      recording: 'Đang ghi âm...',
+      copy: 'Sao chép',
+      reverse: 'Đảo ngược',
+      speakTitle: 'Đọc to',
+      errorNoVoice: 'Trình duyệt không hỗ trợ nhập giọng nói',
+      errorVoiceFailed: 'Nhập giọng nói thất bại, vui lòng thử lại',
+      errorTranslateFailed: 'Dịch thất bại',
+      settingsSave: 'Lưu',
+      settingsUsingEnv: 'Dùng .env',
+      loading: 'Đang tải...',
+    },
+  },
+  'zh-vi': {
+    source: 'Traditional Chinese', target: 'Vietnamese',
+    sourceLabel: '繁體中文', targetLabel: '越南文', sourceFlag: '🇹🇼',
+    ui: {
+      inputPlaceholder: '輸入繁體中文...',
+      translate: '翻  譯',
+      translating: '翻譯中...',
+      voiceInput: '語音輸入',
+      recording: '錄音中...',
+      copy: '複製',
+      reverse: '反轉翻譯',
+      speakTitle: '朗讀（廣東話）',
+      errorNoVoice: '你的瀏覽器不支援語音輸入',
+      errorVoiceFailed: '語音辨識失敗，請再試一次',
+      errorTranslateFailed: '翻譯失敗',
+      settingsSave: '儲存',
+      settingsUsingEnv: '用 .env',
+      loading: '載入中...',
+    },
+  },
 }
 
 function TranslateInner() {
@@ -13,6 +72,7 @@ function TranslateInner() {
   const router = useRouter()
   const dir = searchParams.get('dir') || 'vi-zh'
   const lang = LANG_MAP[dir] || LANG_MAP['vi-zh']
+  const ui = lang.ui
 
   const [input, setInput] = useState('')
   const [result, setResult] = useState('')
@@ -50,20 +110,28 @@ function TranslateInner() {
         body: JSON.stringify({ text: input.trim(), source: lang.source, target: lang.target }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || '翻譯失敗')
+      if (!res.ok) throw new Error(data.error || ui.errorTranslateFailed)
       setResult(data.translation)
     } catch (e: any) {
       setError(e.message)
     } finally {
       setLoading(false)
     }
-  }, [input, apiKey, lang])
+  }, [input, apiKey, lang, ui])
+
+  // Toggle direction and swap input/result
+  const toggleDir = () => {
+    const newDir = dir === 'vi-zh' ? 'zh-vi' : 'vi-zh'
+    setInput(result)
+    setResult('')
+    router.push(`/translate?dir=${newDir}`)
+  }
 
   // Voice input
   const startListening = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SpeechRecognition) {
-      setError('你的瀏覽器不支援語音輸入')
+      setError(ui.errorNoVoice)
       return
     }
 
@@ -79,7 +147,7 @@ function TranslateInner() {
     }
     recognition.onerror = () => {
       setListening(false)
-      setError('語音辨識失敗，請再試一次')
+      setError(ui.errorVoiceFailed)
     }
     recognition.onend = () => setListening(false)
 
@@ -93,59 +161,13 @@ function TranslateInner() {
     setListening(false)
   }
 
-  // TTS — improved voice selection
-  const voiceCache = useRef<Record<string, SpeechSynthesisVoice | null>>({})
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
-    const loadVoices = () => {
-      const allVoices = window.speechSynthesis.getVoices()
-      if (allVoices.length === 0) return
-
-      const langMap: Record<string, string> = {
-        'zh-HK': 'zh-HK',
-        'vi-VN': 'vi-VN',
-      }
-
-      for (const [code, bcp47] of Object.entries(langMap)) {
-        const langPrefix = bcp47.split('-')[0]
-
-        const priority = (v: SpeechSynthesisVoice) => {
-          const name = v.name.toLowerCase()
-          let score = 0
-          if (name.includes('google')) score += 100
-          else if (name.includes('microsoft')) score += 80
-          if (name.includes('natural')) score += 50
-          if (name.includes('premium')) score += 40
-          if (name.includes('enhanced')) score += 30
-          if (name.includes('samantha') || name.includes('karen') || name.includes('daniel')) score += 20
-          return score
-        }
-
-        const candidates = allVoices
-          .filter((v) => v.lang.startsWith(langPrefix) || v.lang.startsWith(code))
-          .sort((a, b) => priority(b) - priority(a))
-
-        voiceCache.current[code] = candidates[0] || null
-      }
-    }
-
-    loadVoices()
-    window.speechSynthesis.onvoiceschanged = loadVoices
-    return () => { window.speechSynthesis.onvoiceschanged = null }
-  }, [])
-
+  // TTS
   const speak = (text: string, dir: string) => {
-    if (!('speechSynthesis' in window)) return
+    if (!text || !('speechSynthesis' in window)) return
     window.speechSynthesis.cancel()
 
     const lang = dir === 'vi-zh' ? 'zh-HK' : 'vi-VN'
     const utterance = new SpeechSynthesisUtterance(text)
-
-    const bestVoice = voiceCache.current[lang]
-    if (bestVoice) {
-      utterance.voice = bestVoice
-    }
     utterance.lang = lang
     utterance.rate = 0.9
     window.speechSynthesis.speak(utterance)
@@ -175,9 +197,9 @@ function TranslateInner() {
             className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
           />
           <button onClick={saveKey} className="bg-sky-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-sky-700 whitespace-nowrap">
-            {keySaved ? '✅' : '儲存'}
+            {keySaved ? '✅' : ui.settingsSave}
           </button>
-          {!apiKey && <span className="text-xs text-amber-500">用 .env</span>}
+          {!apiKey && <span className="text-xs text-amber-500">{ui.settingsUsingEnv}</span>}
         </div>
       )}
 
@@ -186,7 +208,7 @@ function TranslateInner() {
         <textarea
           value={input}
           onChange={e => setInput(e.target.value)}
-          placeholder={dir === 'vi-zh' ? 'Nhập văn bản tiếng Việt...' : '輸入繁體中文...'}
+          placeholder={ui.inputPlaceholder}
           className="flex-1 min-h-[200px] w-full border border-gray-300 rounded-2xl p-5 text-xl resize-none focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white shadow-sm"
         />
 
@@ -198,7 +220,7 @@ function TranslateInner() {
             }`}
           >
             <span className="text-xl">{listening ? '⏹' : '🎤'}</span>
-            {listening ? '錄音中...' : '語音輸入'}
+            {listening ? ui.recording : ui.voiceInput}
           </button>
 
           <button
@@ -206,7 +228,7 @@ function TranslateInner() {
             disabled={loading || !input.trim()}
             className="flex-1 bg-sky-600 text-white py-4 rounded-xl font-semibold text-xl hover:bg-sky-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
           >
-            {loading ? '翻譯中...' : '翻  譯'}
+            {loading ? ui.translating : ui.translate}
           </button>
         </div>
 
@@ -222,7 +244,7 @@ function TranslateInner() {
               <button
                 onClick={() => speak(result, dir)}
                 className="shrink-0 text-gray-400 hover:text-sky-600 text-2xl p-1"
-                title="朗讀（廣東話）"
+                title={ui.speakTitle}
               >
                 🔊
               </button>
@@ -232,13 +254,13 @@ function TranslateInner() {
                 onClick={() => { navigator.clipboard.writeText(result) }}
                 className="hover:text-sky-600 text-base"
               >
-                📋 複製
+                📋 {ui.copy}
               </button>
               <button
-                onClick={() => { setInput(result); setResult('') }}
+                onClick={toggleDir}
                 className="hover:text-sky-600 text-base"
               >
-                🔄 反轉翻譯
+                🔄 {ui.reverse}
               </button>
             </div>
           </div>
@@ -250,7 +272,7 @@ function TranslateInner() {
 
 export default function TranslatePage() {
   return (
-    <Suspense fallback={<div className="min-h-dvh flex items-center justify-center text-gray-400">載入中...</div>}>
+    <Suspense fallback={<div className="min-h-dvh flex items-center justify-center text-gray-400">...</div>}>
       <TranslateInner />
     </Suspense>
   )
