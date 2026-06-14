@@ -17,13 +17,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '未設定 API Key。請在 .env 設定 DEEPSEEK_API_KEY 或在 App 內設定。' }, { status: 401 })
     }
 
-    const systemPrompt = `You are a professional translator. Translate the following ${source} text to ${target}. 
-Rules:
-- Only output the translated text, nothing else.
-- No explanations, no notes, no quotation marks around the translation.
-- Preserve the original tone (formal/casual).
-- If the text is already in ${target}, return it as-is.
-- IMPORTANT: When translating TO Traditional Chinese, ALWAYS use Traditional Chinese characters (繁體字), NEVER Simplified Chinese (简体字).`
+    const systemPrompt = `You are a professional translator. Translate the following ${source} text to ${target}.
+
+CRITICAL RULES:
+1. Output ONLY the translated text in ${target}.
+2. When translating TO Vietnamese (Tiếng Việt): NEVER output in Chinese (Traditional or Simplified) or English.
+3. When translating TO Chinese: ALWAYS use Traditional Chinese (繁體字), NEVER Simplified Chinese (简体字).
+4. NEVER add explanations, notes, quotation marks, or the original text.
+5. Preserve the original tone (formal/casual).
+6. If the text is already in ${target}, return it as-is.
+7. Respond with nothing but the translation.`
 
     const res = await fetch(DEEPSEEK_URL, {
       method: 'POST',
