@@ -11,6 +11,9 @@ type UIStrings = {
   recording: string
   copy: string
   reverse: string
+  clear: string
+  clearHistory: string
+  history: string
   speakTitle: string
   errorNoVoice: string
   errorVoiceFailed: string
@@ -36,6 +39,9 @@ const LANG_MAP: Record<string, {
       recording: 'Đang ghi âm...',
       copy: 'Sao chép',
       reverse: 'Đảo ngược',
+      clear: 'Xoá',
+      clearHistory: 'Xoá lịch sử',
+      history: 'Lịch sử',
       speakTitle: 'Đọc to',
       errorNoVoice: 'Trình duyệt không hỗ trợ nhập giọng nói',
       errorVoiceFailed: 'Nhập giọng nói thất bại, vui lòng thử lại',
@@ -56,6 +62,9 @@ const LANG_MAP: Record<string, {
       recording: '錄音中...',
       copy: '複製',
       reverse: '反轉翻譯',
+      clear: '清除',
+      clearHistory: '清除歷史',
+      history: '歷史記錄',
       speakTitle: '朗讀（廣東話）',
       errorNoVoice: '你的瀏覽器不支援語音輸入',
       errorVoiceFailed: '語音辨識失敗，請再試一次',
@@ -84,11 +93,31 @@ function TranslateInner() {
   const [apiKey, setApiKey] = useState('')
   const [keySaved, setKeySaved] = useState(false)
 
+  const [showHistory, setShowHistory] = useState(false)
+  const [history, setHistory] = useState<{source: string; target: string; dir: string; ts: number}[]>([])
+
   const recognitionRef = useRef<any>(null)
+
+  const HISTORY_KEY = 'translate_history'
 
   useEffect(() => {
     setApiKey(localStorage.getItem('deepseek_api_key') || '')
+    try {
+      const saved = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]')
+      setHistory(saved)
+    } catch {}
   }, [])
+
+  const clearAll = () => {
+    setInput('')
+    setResult('')
+    setError('')
+  }
+
+  const clearHistory = () => {
+    localStorage.removeItem(HISTORY_KEY)
+    setHistory([])
+  }
 
   const saveKey = () => {
     localStorage.setItem('deepseek_api_key', apiKey.trim())
@@ -112,6 +141,13 @@ function TranslateInner() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || ui.errorTranslateFailed)
       setResult(data.translation)
+      // Auto-save to history
+      const entry = { source: input.trim(), target: data.translation, dir, ts: Date.now() }
+      setHistory(prev => {
+        const updated = [entry, ...prev].slice(0, 200)
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(updated))
+        return updated
+      })
     } catch (e: any) {
       setError(e.message)
     } finally {
@@ -261,15 +297,14 @@ function TranslateInner() {
         )}
 
         {/* Action buttons */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <button
             onClick={listening ? stopListening : startListening}
-            className={`flex items-center gap-2 px-5 py-3 rounded-xl font-medium text-base transition-all ${
+            className={`flex items-center gap-2 px-4 py-3 rounded-xl font-medium text-base transition-all ${
               listening ? 'bg-red-500 text-white animate-pulse' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             }`}
           >
             <span className="text-lg">{listening ? '⏹' : '🎤'}</span>
-            {listening ? ui.recording : ui.voiceInput}
           </button>
 
           <button
@@ -280,6 +315,65 @@ function TranslateInner() {
             {loading ? ui.translating : ui.translate}
           </button>
         </div>
+
+        {/* Second row: clear + history */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={clearAll}
+            disabled={!input && !result}
+            className="flex-1 bg-gray-100 text-gray-500 py-2.5 rounded-xl font-medium text-sm hover:bg-red-100 hover:text-red-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            🧹 {ui.clear}
+          </button>
+          <button
+            onClick={() => setShowHistory(!showHistory)}
+            className={`flex-1 py-2.5 rounded-xl font-medium text-sm transition-colors ${
+              showHistory ? 'bg-sky-100 text-sky-600' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            }`}
+          >
+            📜 {ui.history} ({history.length})
+          </button>
+        </div>
+
+        {/* History panel */}
+        {showHistory && (
+          <div className="border border-gray-200 rounded-2xl bg-white shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+              <span className="text-sm font-medium text-gray-500">{ui.history}</span>
+              {history.length > 0 && (
+                <button
+                  onClick={clearHistory}
+                  className="text-xs text-red-400 hover:text-red-600 transition-colors"
+                >
+                  🗑 {ui.clearHistory}
+                </button>
+              )}
+            </div>
+            <div className="max-h-[240px] overflow-y-auto">
+              {history.length === 0 ? (
+                <div className="text-center text-gray-300 text-sm py-8">—</div>
+              ) : (
+                history.map((entry, i) => (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      setInput(entry.source)
+                      setResult(entry.target)
+                      setShowHistory(false)
+                    }}
+                    className="w-full text-left px-4 py-3 border-b border-gray-50 hover:bg-sky-50 transition-colors last:border-0"
+                  >
+                    <div className="text-sm text-gray-800 truncate">{entry.source}</div>
+                    <div className="text-xs text-gray-400 truncate mt-0.5">{entry.target}</div>
+                    <div className="text-[10px] text-gray-300 mt-0.5">
+                      {entry.dir === 'vi-zh' ? '🇻🇳→🇹🇼' : '🇹🇼→🇻🇳'} · {new Date(entry.ts).toLocaleString()}
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </main>
   )
