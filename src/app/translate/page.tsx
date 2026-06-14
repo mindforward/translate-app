@@ -203,68 +203,83 @@ function TranslateInner() {
         </div>
       )}
 
-      {/* Input area */}
-      <div className="flex-1 flex flex-col p-5 gap-5">
-        <textarea
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          placeholder={ui.inputPlaceholder}
-          className="flex-1 min-h-[200px] w-full border border-gray-300 rounded-2xl p-5 text-xl resize-none focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white shadow-sm"
-        />
+      {/* Dual-panel: original + translation */}
+      <div className="flex-1 flex flex-col p-5 gap-4">
+        {/* Original text panel */}
+        <div className="flex-1 flex flex-col gap-2">
+          <div className="text-xs font-medium text-gray-400 uppercase tracking-wider">{lang.sourceFlag} {lang.sourceLabel}</div>
+          <textarea
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            placeholder={ui.inputPlaceholder}
+            className="flex-1 min-h-[120px] w-full border border-gray-300 rounded-2xl p-4 text-lg resize-none focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white shadow-sm"
+          />
+        </div>
 
+        {/* Translation panel */}
+        <div className="flex-1 flex flex-col gap-2">
+          <div className="text-xs font-medium text-gray-400 uppercase tracking-wider">{lang.targetLabel}</div>
+          <div className="flex-1 min-h-[120px] w-full border border-gray-200 rounded-2xl p-4 bg-gray-50 shadow-sm flex flex-col">
+            {result ? (
+              <>
+                <div className="flex-1 flex items-start justify-between gap-3">
+                  <p className="text-gray-800 text-lg leading-relaxed whitespace-pre-wrap">{result}</p>
+                  <button
+                    onClick={() => speak(result, dir)}
+                    className="shrink-0 text-gray-400 hover:text-sky-600 text-xl p-1"
+                    title={ui.speakTitle}
+                  >
+                    🔊
+                  </button>
+                </div>
+                <div className="flex gap-3 text-sm text-gray-400 mt-2 pt-2 border-t border-gray-200">
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(result) }}
+                    className="hover:text-sky-600 text-base"
+                  >
+                    📋 {ui.copy}
+                  </button>
+                  <button
+                    onClick={toggleDir}
+                    className="hover:text-sky-600 text-base"
+                  >
+                    🔄 {ui.reverse}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-gray-300 text-base italic">
+                {loading ? ui.translating : '⋯'}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Error */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-red-600 text-sm">{error}</div>
+        )}
+
+        {/* Action buttons */}
         <div className="flex items-center gap-3">
           <button
             onClick={listening ? stopListening : startListening}
-            className={`flex items-center gap-2 px-6 py-4 rounded-xl font-medium text-lg transition-all ${
+            className={`flex items-center gap-2 px-5 py-3 rounded-xl font-medium text-base transition-all ${
               listening ? 'bg-red-500 text-white animate-pulse' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             }`}
           >
-            <span className="text-xl">{listening ? '⏹' : '🎤'}</span>
+            <span className="text-lg">{listening ? '⏹' : '🎤'}</span>
             {listening ? ui.recording : ui.voiceInput}
           </button>
 
           <button
             onClick={translate}
             disabled={loading || !input.trim()}
-            className="flex-1 bg-sky-600 text-white py-4 rounded-xl font-semibold text-xl hover:bg-sky-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
+            className="flex-1 bg-sky-600 text-white py-3 rounded-xl font-semibold text-lg hover:bg-sky-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
           >
             {loading ? ui.translating : ui.translate}
           </button>
         </div>
-
-        {/* Result */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-2xl p-5 text-red-600 text-base">{error}</div>
-        )}
-
-        {result && (
-          <div className="bg-white border border-sky-200 rounded-2xl p-6 shadow-sm space-y-4">
-            <div className="flex items-start justify-between gap-3">
-              <p className="text-gray-800 text-2xl leading-relaxed whitespace-pre-wrap">{result}</p>
-              <button
-                onClick={() => speak(result, dir)}
-                className="shrink-0 text-gray-400 hover:text-sky-600 text-2xl p-1"
-                title={ui.speakTitle}
-              >
-                🔊
-              </button>
-            </div>
-            <div className="flex gap-3 text-sm text-gray-400">
-              <button
-                onClick={() => { navigator.clipboard.writeText(result) }}
-                className="hover:text-sky-600 text-base"
-              >
-                📋 {ui.copy}
-              </button>
-              <button
-                onClick={toggleDir}
-                className="hover:text-sky-600 text-base"
-              >
-                🔄 {ui.reverse}
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </main>
   )
